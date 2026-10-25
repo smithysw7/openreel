@@ -1,6 +1,6 @@
 # OpenReel 进度报告
 
-> 更新时间：10/25 深夜 · 状态：**✅ 全链路完成——第一部全本地、全开源的真实短片已产出**
+> 更新时间：10/26 · 状态：**🏆 已完成正式提交（Final Submission Form 已提交成功）**
 
 ## 最终成果
 
@@ -38,25 +38,15 @@
 - 云端账户余额 0（免费 credits 未发放，推测前 200 名已满），云端路线暂时不可用——**不影响任何本地功能**；
 - 若之后充值或免费 credits 到账，重启应用即自动可用云端后端（用于对比或切换）。
 
-## 你回来后要做的（只剩发布动作）
+## 提交记录（10/26）
 
-1. **看成片**：首页"最近项目"打开《未命名短片》（或深链接 `/?p=bcc1b28e`），播放 41.5 秒真实短片；
-2. **不满意就重拍**：片场视图每个镜头有"重拍"按钮（本地生成零成本）；
-3. **GitHub**：建公开仓库 → `git remote add origin ...` → `git push`（本地已有提交）;
-4. **上传视频**：`demo/openreel-demo.webm`（34 秒，<2 分钟达标）传 YouTube/Bilibili，链接填入表单；
-5. **填表提交**：逐题答案在 `docs/SUBMISSION.md`，**10/31 00:00（北京时间）前**；
-6. （可选）发一条带 #OpenSourceHiggsfield 的社交帖。
+- ✅ Final Submission Form 已提交（12 题全部填写，Typeform 确认页已显示）
+- ✅ GitHub 公开仓库：https://github.com/smithysw7/openreel
+- ✅ Demo 视频：https://github.com/smithysw7/openreel/raw/main/demo/openreel-demo.webm
+- ✅ X 社交帖：https://x.com/ChigoQI/status/2114360365467480182
+- ✅ 报名赛道：Open Weights Only + Best Overall，MiniMax H3 加成资格
 
-## 已知边界
+## 后续时间线
 
-- 本地单镜头约 11 分钟：挂机跑即可，"一键拍摄全部"是串行的；
-- H3 本地输出 960×544：评审足够，盘里有 upscale 模型可后续放大；
-- 云端路线余额 0 时 402——预期行为，不影响本地；
-- 本地生成需要本地 ComfyUI 在跑（`http://127.0.0.1:8188`），关机后下次开机需重新启动 ComfyUI。
-
-## 历史过程记录（squash 前可留档）
-
-- 第一轮：Next.js 骨架、云端 Router 客户端（按官方 schema 核对 `bfl/flux-3-image` / `minimax/minimax-h3`）、
-  三步向导 UI、ffmpeg 拼装管线、mock 演示模式、并发覆盖 bug 修复、提交表单逐题答案稿；
-- 第二轮：连戏锚定回退（无参考图时用第一张定妆照）、占位画面标签、深链接、错误路径验证；
-- 第三轮：本地路线侦察（模型库盘点 + ComfyUI 启动 + 节点验证）→ 本地适配层实现 → 真实生成全链路验证。
+- **11/6**：获奖者公布（comfy.org/hub 展示获奖作品）
+- 期间可以：继续用本地管线迭代短片（零成本）、在 X 上发成片片段引流、关注 Discord 公告
