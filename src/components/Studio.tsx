@@ -7,7 +7,10 @@ import type { Project, Shot } from "@/lib/types";
 interface ConfigInfo {
   comfy: boolean;
   llm: boolean;
+  local?: boolean;
   mockMode: boolean;
+  backend?: "local" | "cloud" | "mock";
+  backendLabel?: string;
   imageModel: string;
   videoModel: string;
 }
@@ -303,8 +306,10 @@ export default function Studio() {
               }`}
             >
               {config.mockMode
-                ? "演示模式 · 未配置 COMFY_API_KEY，生成占位画面"
-                : `真实生成 · 图 ${config.imageModel} / 视频 ${config.videoModel}`}
+                ? "演示模式 · 未配置本地 ComfyUI / COMFY_API_KEY，生成占位画面"
+                : config.backend === "local"
+                  ? "真实生成 · 本地 ComfyUI（开源权重，零 credits）"
+                  : `真实生成 · 云端 ${config.imageModel} / ${config.videoModel}`}
             </span>
           )}
           {project && (

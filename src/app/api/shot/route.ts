@@ -1,7 +1,10 @@
 import { downloadToFile, generateImage, generateVideo, isComfyConfigured } from "@/lib/comfy";
+import { generateImageLocal, generateVideoLocal } from "@/lib/comfy_local";
+import { pickBackend } from "@/lib/backend";
 import { generateMockImage, generateMockVideo, probeDuration } from "@/lib/media";
 import { assetPath, assetUrl, getProject, readAssetAsDataUrl, saveProject } from "@/lib/store";
 import type { Project, Shot } from "@/lib/types";
+import path from "node:path";
 
 /** 同一镜头同时只允许一个生成任务（进程内守卫，重启后自动清空） */
 const runningJobs = new Set<string>();
@@ -9,7 +12,7 @@ const runningJobs = new Set<string>();
 /**
  * 生成任务串行队列：
  * 1) 避免 8 个任务并发读-改-写同一个项目 JSON 互相覆盖状态；
- * 2) 避免真实模式下并发请求触发 Router 的 429 并发限制。
+ * 2) 避免真实模式下并发请求触发 Router 的 429 并发限制（本地路线则受显存约束，同样串行更稳）。
  */
 const jobQueue: (() => Promise<void>)[] = [];
 let draining = false;
@@ -87,23 +90,68 @@ async function runShotJob(projectId: string, shotId: string): Promise<void> {
   if (!project) return;
   const shot = project.shots.find((s) => s.id === shotId);
   if (!shot) return;
+  const backend = await pickBackend();
 
   try {
-    if (isComfyConfigured()) {
+    if (backend === "local") {
+      // ===== 本地 ComfyUI（Z-Image Turbo + MiniMax H3，开源权重，零 credits）=====
       const actor = project.actor;
       const characterBlock = actor ? `${actor.name}，${actor.description}。` : "";
       const styleBlock = actor?.styleBlock ?? project.style;
 
       // 1) 关键帧（失败则降级为文生视频，不中断整个镜头）
+      let keyframeDisk: string | undefined;
+      try {
+        const keyframePrompt = `${shot.title}：${shot.description}。角色：${characterBlock}风格：${styleBlock}`;
+        const outs = await generateImageLocal({
+          prompt: keyframePrompt,
+          aspect: project.aspect,
+          destBase: assetPath(project.id, `${shot.id}-keyframe`),
+          timeoutMs: 10 * 60_000,
+        });
+        keyframeDisk = outs[0]?.path;
+        if (!keyframeDisk) throw new Error("没有产物");
+        await updateShot(projectId, shotId, (_p, s) => {
+          s.keyframePath = assetUrl(project.id, path.basename(keyframeDisk!));
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        await updateShot(projectId, shotId, (p) => {
+          p.warnings = [...(p.warnings ?? []), `镜头 ${shot.index + 1} 关键帧失败，已改用文生视频：${msg}`].slice(-10);
+        });
+      }
+
+      // 2) 视频：有首帧走图生视频，否则文生视频
+      const videoPrompt = keyframeDisk
+        ? `${shot.motion}。延续首帧画面内容与人物形象。`
+        : `${shot.title}：${shot.description}。${shot.motion}。角色：${characterBlock}风格：${styleBlock}`;
+      const videoOuts = await generateVideoLocal({
+        prompt: videoPrompt,
+        firstFramePath: keyframeDisk,
+        aspect: project.aspect,
+        durationSec: shot.durationSec,
+        destBase: assetPath(project.id, `${shot.id}-video`),
+        timeoutMs: 40 * 60_000,
+      });
+      const actual = await probeDuration(videoOuts[0].path);
+      await updateShot(projectId, shotId, (_p, s) => {
+        s.videoPath = assetUrl(project.id, path.basename(videoOuts[0].path));
+        if (Number.isFinite(actual) && actual > 0.5) s.durationSec = Math.round(actual * 10) / 10;
+        s.status = "ready";
+      });
+    } else if (backend === "cloud" && isComfyConfigured()) {
+      // ===== Comfy 云端 Router API =====
+      const actor = project.actor;
+      const characterBlock = actor ? `${actor.name}，${actor.description}。` : "";
+      const styleBlock = actor?.styleBlock ?? project.style;
+
       let keyframeDataUrl: string | undefined;
       try {
         const keyframePrompt = `${shot.title}：${shot.description}。角色：${characterBlock}风格：${styleBlock}`;
         // 锚定参考图优先用用户上传的参考图，否则用演员卡第一张定妆照（保证跨镜头角色一致）
         const anchorPath =
           actor?.refImagePath ??
-          (actor?.sheetImages?.[0]
-            ? assetPath(project.id, actor.sheetImages[0].split("/").pop()!)
-            : undefined);
+          (actor?.sheetImages?.[0] ? assetPath(project.id, actor.sheetImages[0].split("/").pop()!) : undefined);
         const { urls } = await generateImage({
           prompt: keyframePrompt,
           referenceImage: anchorPath ? await readAssetAsDataUrl(anchorPath) : undefined,
@@ -123,7 +171,6 @@ async function runShotJob(projectId: string, shotId: string): Promise<void> {
         });
       }
 
-      // 2) 视频：有首帧走图生视频，否则文生视频
       const videoPrompt = keyframeDataUrl
         ? `${shot.motion}。延续首帧画面内容与人物形象。`
         : `${shot.title}：${shot.description}。${shot.motion}。角色：${characterBlock}风格：${styleBlock}`;
@@ -143,7 +190,7 @@ async function runShotJob(projectId: string, shotId: string): Promise<void> {
         s.status = "ready";
       });
     } else {
-      // 演示模式：占位媒体，模拟生成耗时
+      // ===== 演示模式：占位媒体，模拟生成耗时 =====
       const shotLabel = `镜头 ${shot.index + 1} · ${shot.title}（占位画面）`;
       await sleep(1200);
       await generateMockImage(assetPath(project.id, `${shot.id}-keyframe.png`), shot.index, project.aspect, shotLabel);
@@ -160,7 +207,7 @@ async function runShotJob(projectId: string, shotId: string): Promise<void> {
         p.warnings = [
           ...new Set([
             ...(p.warnings ?? []),
-            "演示模式：镜头为占位画面，配置 COMFY_API_KEY 后重新生成即可得到真实视频",
+            "演示模式：镜头为占位画面，启动本地 ComfyUI 或配置 COMFY_API_KEY 后重新生成即可得到真实视频",
           ]),
         ].slice(-10);
       });

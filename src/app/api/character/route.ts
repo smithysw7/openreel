@@ -1,4 +1,6 @@
 import { downloadToFile, generateImage, isComfyConfigured } from "@/lib/comfy";
+import { generateImageLocal } from "@/lib/comfy_local";
+import { pickBackend } from "@/lib/backend";
 import { DEFAULT_STYLE_BLOCK } from "@/lib/presets";
 import {
   assetPath,
@@ -11,6 +13,7 @@ import {
 } from "@/lib/store";
 import { generateMockImage } from "@/lib/media";
 import type { ActorCard } from "@/lib/types";
+import path from "node:path";
 
 
 const SHEET_POSES = [
@@ -59,22 +62,22 @@ export async function POST(req: Request) {
 
   const styleBlock = `${project.style}, ${DEFAULT_STYLE_BLOCK}`;
   const sheetImages: string[] = [];
+  const backend = await pickBackend();
 
-  if (isComfyConfigured()) {
+  if (backend === "local") {
     for (let i = 0; i < SHEET_POSES.length; i++) {
       const prompt = `${name}。${description}。${SHEET_POSES[i]}。同一人物，统一角色设定。风格：${styleBlock}`;
       try {
-        const { urls } = await generateImage({
+        const outs = await generateImageLocal({
           prompt,
-          referenceImage: anchorDataUrl,
           aspect: "16:9",
-          timeoutMs: 8 * 60_000,
+          destBase: assetPath(project.id, `sheet-${i}`),
+          timeoutMs: 10 * 60_000,
         });
-        const disk = assetPath(project.id, `sheet-${i}.png`);
-        await downloadToFile(urls[0], disk);
-        sheetImages.push(assetUrl(project.id, `sheet-${i}.png`));
+        if (outs.length === 0) throw new Error("没有产物");
+        sheetImages.push(assetUrl(project.id, path.basename(outs[0].path)));
         // 第一张定妆照作为后续姿势的锚定参考图（开源版 Soul ID 的核心机制）
-        if (!anchorDataUrl && i === 0) anchorDataUrl = await readAssetAsDataUrl(disk);
+        if (!anchorDataUrl && i === 0) anchorDataUrl = await readAssetAsDataUrl(outs[0].path);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         warnings.push(`设定图 ${i + 1} 生成失败，已用占位图代替：${msg}`);
@@ -82,7 +85,7 @@ export async function POST(req: Request) {
         sheetImages.push(assetUrl(project.id, `sheet-${i}.png`));
       }
     }
-  } else {
+  } else if (backend === "cloud" && isComfyConfigured()) {
     for (let i = 0; i < SHEET_POSES.length; i++) {
       await generateMockImage(assetPath(project.id, `sheet-${i}.png`), i, "16:9", `定妆照 ${i + 1}（占位）`);
       sheetImages.push(assetUrl(project.id, `sheet-${i}.png`));
