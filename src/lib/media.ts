@@ -191,7 +191,7 @@ function escapeFilterPath(p: string): string {
 
 /**
  * 成片拼装管线：
- * 1) 每个片段归一化  2) concat 拼接（流复制）  3) 烧录字幕  4) 混入 BGM
+ * 1) 每个片段归一化  2) concat 拼接（流复制）  3) 烧录字幕  4) 混入旁白与 BGM
  */
 export async function assembleFilm(opts: {
   clipPaths: string[];
@@ -200,8 +200,11 @@ export async function assembleFilm(opts: {
   tmpDir: string;
   aspect: "16:9" | "9:16";
   bgmPath?: string;
+  /** 旁白配音：path 为音频文件，offsetSec 为相对成片起始的混入时间 */
+  narrations?: { path: string; offsetSec: number }[];
 }): Promise<{ durationSec: number; subtitlesBurned: boolean; bgmMixed: boolean }> {
   const { clipPaths, dialogues, outPath, tmpDir, aspect, bgmPath } = opts;
+  const narrations = opts.narrations ?? [];
   if (clipPaths.length === 0) throw new Error("没有可用的镜头片段");
   // 清掉上一次拼装的中间产物，避免临时目录无限膨胀
   await fs.rm(tmpDir, { recursive: true, force: true });
@@ -251,17 +254,38 @@ export async function assembleFilm(opts: {
     subtitlesBurned = true;
   }
 
-  // 4) 混入 BGM
+  // 4) 混入旁白与 BGM（旁白按 offsetSec 对齐，有旁白时原声自动压低）
   let bgmMixed = false;
-  if (bgmPath) {
-    await run("ffmpeg", [
-      "-y", "-i", current, "-stream_loop", "-1", "-i", bgmPath,
-      "-filter_complex", "[1:a]volume=0.22[bg];[0:a][bg]amix=inputs=2:duration=first:dropout_transition=3[mix]",
-      "-map", "0:v:0", "-map", "[mix]",
-      "-c:v", "copy", "-c:a", "aac", "-b:a", "160k",
+  if (narrations.length > 0 || bgmPath) {
+    const args = ["-y", "-i", current];
+    const chains: string[] = [];
+    const mixIns: string[] = [];
+    let idx = 1;
+    if (narrations.length > 0) chains.push(`[0:a]volume=0.45[m]`);
+    else chains.push(`[0:a]anull[m]`);
+    mixIns.push("[m]");
+    for (const nr of narrations) {
+      args.push("-i", nr.path);
+      const ms = Math.max(0, Math.round(nr.offsetSec * 1000));
+      chains.push(`[${idx}:a]adelay=${ms}:all=1[n${idx}]`);
+      mixIns.push(`[n${idx}]`);
+      idx++;
+    }
+    if (bgmPath) {
+      args.push("-stream_loop", "-1", "-i", bgmPath);
+      chains.push(`[${idx}:a]volume=0.15[bg]`);
+      mixIns.push("[bg]");
+      idx++;
+      bgmMixed = true;
+    }
+    chains.push(`${mixIns.join("")}amix=inputs=${mixIns.length}:duration=first:normalize=0[aout]`);
+    args.push(
+      "-filter_complex", chains.join(";"),
+      "-map", "0:v:0", "-map", "[aout]",
+      "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
       outPath,
-    ]);
-    bgmMixed = true;
+    );
+    await run("ffmpeg", args);
   } else {
     await fs.copyFile(current, outPath);
   }

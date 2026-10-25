@@ -15,6 +15,15 @@
 - `demo/teaser-5s.mp4`（5 秒预告片）；
 - `docs/images/` 三张截图（真实模式徽标 + 真实画面）。
 
+## 10/26 晚补充：旁白配音（回应看片反馈）
+
+- 反馈：旁白只有字幕没有人读；高潮台词「Action。」缺铺垫。
+- 修复：接入本地 OmniVoice TTS（VoiceDesignTTS，2.45GB 权重在本机）——旁白用「male, middle-aged, low pitch」，陈默用「male, young adult, moderate pitch」，6 条台词 **4 秒/条** 全部本地合成；
+- 台词补写：低谷时刻新增铺垫线「没有人肯给我一个特写。那我自己来。」，高潮的「Action。」不再突兀；
+- 拼装管线升级：旁白按镜头起始时间精确混入（adelay 对齐），H3 原生环境音自动压低至 45%；
+- 实测：旁白位置音量 -9dB（人声清晰）vs 无台词处 -24dB（环境铺垫），成片已重新拼装并重录 demo。
+- 踩坑记录：ComfyUI 音频产物键名是 audio（下载器原先只收集 videos/images，导致 TTS 跑了但文件没落盘）。
+
 ## 技术路线（已验证）
 
 - **Open Weights Only 赛道资格达成**：生成全部在本地开源权重上完成（Z-Image Turbo + MiniMax H3），

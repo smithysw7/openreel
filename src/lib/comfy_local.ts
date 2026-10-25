@@ -98,7 +98,7 @@ async function downloadOutputs(hist: { outputs?: Record<string, Record<string, {
   const out: LocalOutput[] = [];
   let n = 0;
   for (const nodeOut of Object.values(hist.outputs ?? {})) {
-    for (const key of ["videos", "images", "gifs", "video"]) {
+    for (const key of ["videos", "audio", "images", "gifs", "video"]) {
       for (const item of nodeOut[key] ?? []) {
         const params = new URLSearchParams({ filename: item.filename, subfolder: item.subfolder ?? "", type: item.type ?? "output" });
         const res = await fetch(`${BASE}/view?${params}`);
@@ -144,6 +144,47 @@ export interface LocalVideoRequest {
   durationSec?: number;
   destBase: string;
   timeoutMs?: number;
+}
+
+export interface LocalSpeechRequest {
+  text: string;
+  /** 音色描述，仅支持固定关键词：male/female、middle-aged 等、low pitch 等（详见 OmniVoice 节点） */
+  voiceInstruct?: string;
+  destBase: string;
+  timeoutMs?: number;
+}
+
+/** 本地语音合成（OmniVoice VoiceDesignTTS） */
+export async function generateSpeechLocal(req: LocalSpeechRequest): Promise<LocalOutput[]> {
+  const wf = {
+    "1": {
+      class_type: "OmniVoiceVoiceDesignTTS",
+      inputs: {
+        model: "OmniVoice",
+        text: req.text,
+        voice_instruct: req.voiceInstruct ?? "male, middle-aged, moderate pitch",
+        steps: 32,
+        guidance_scale: 2,
+        t_shift: 0.1,
+        speed: 1,
+        duration: 0,
+        device: "cuda",
+        dtype: "auto",
+        attention: "auto",
+        seed: Math.floor(Math.random() * 1e9),
+        position_temperature: 5,
+        class_temperature: 0,
+        layer_penalty_factor: 5,
+        denoise: true,
+        postprocess_output: true,
+        keep_model_loaded: true,
+      },
+    },
+    "2": { class_type: "SaveAudioMP3", inputs: { audio: ["1", 0], filename_prefix: "openreel/tts", quality: "320k" } },
+  };
+  const id = await submitWorkflow(wf as unknown as Record<string, unknown>);
+  const hist = await waitHistory(id, "语音", req.timeoutMs ?? 10 * 60_000);
+  return downloadOutputs(hist, req.destBase);
 }
 
 /** 本地出视频（MiniMax H3，i2v 带首帧或文生视频） */

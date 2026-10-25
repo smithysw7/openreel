@@ -1,4 +1,5 @@
 import { isComfyConfigured } from "@/lib/comfy";
+import { generateSpeechLocal } from "@/lib/comfy_local";
 import { assembleFilm, generateMockBgm } from "@/lib/media";
 import { assetPath, assetUrl, DATA_DIR, getProject, saveDataUrl, saveProject } from "@/lib/store";
 import path from "node:path";
@@ -46,6 +47,40 @@ export async function POST(req: Request) {
     bgmDisk = mockBgm;
   }
 
+  // 旁白配音：为每个有台词的镜头生成 TTS（本地 OmniVoice），缓存复用
+  const narrations: { path: string; offsetSec: number }[] = [];
+  let cum = 0;
+  for (const s of readyShots) {
+    const dialogue = (s.dialogue ?? "").trim();
+    if (dialogue) {
+      const isNarrator = dialogue.startsWith("旁白");
+      const spoken = dialogue.replace(/^[^：]{1,6}：/, "");
+      const dest = assetPath(project.id, `narr-${s.id}`);
+      let narrDisk: string | undefined;
+      try {
+        await fs.access(`${dest}-0.mp3`);
+        narrDisk = `${dest}-0.mp3`;
+      } catch {
+        try {
+          const outs = await generateSpeechLocal({
+            text: spoken,
+            voiceInstruct: isNarrator ? "male, middle-aged, low pitch" : "male, young adult, moderate pitch",
+            destBase: dest,
+            timeoutMs: 10 * 60_000,
+          });
+          narrDisk = outs[0]?.path;
+        } catch (err) {
+          project.warnings = [
+            ...(project.warnings ?? []),
+            `镜头 ${s.index + 1} 配音失败（字幕仍保留）：${err instanceof Error ? err.message : String(err)}`,
+          ].slice(-10);
+        }
+      }
+      if (narrDisk) narrations.push({ path: narrDisk, offsetSec: cum });
+    }
+    cum += s.durationSec;
+  }
+
   const outName = `film-${Date.now()}.mp4`;
   const outDisk = assetPath(project.id, outName);
   // 只保留最近 2 个成片文件，避免资产目录无限膨胀
@@ -67,6 +102,7 @@ export async function POST(req: Request) {
       tmpDir: path.join(DATA_DIR, "tmp", project.id),
       aspect: project.aspect,
       bgmPath: bgmDisk,
+      narrations,
     });
     project.filmPath = assetUrl(project.id, outName);
     await saveProject(project);
