@@ -1,107 +1,137 @@
-# OpenReel — 开源 AI 短片工作室
+# OpenReel — Open-Source AI Short-Film Studio
 
-> 一句话梗概 → 分镜 → 选角 → 一部角色连戏的短片。
-> 为 [Open Source Higgsfield · Comfy](https://comfy.org/open-source-higgsfield) 竞赛构建：
-> Higgsfield 用 **Soul Cast**（选角）、**Soul ID**（角色一致性）、**Soul Cinema**（电影感生成）搭了一座
-> 闭源的 AI 电影厂；这个项目用 Comfy 生态把同一套管线开源出来。
+> One logline in, a character-consistent short film out.
+> Built for the [Open Source Higgsfield · Comfy](https://comfy.org/open-source-higgsfield) competition:
+> Higgsfield's stack is **Soul Cast** (AI actors), **Soul ID** (character consistency) and **Soul Cinema**
+> (cinematic generation) — OpenReel rebuilds all three ideas in the open, running **entirely on your own GPU**
+> with open-weight models.
 
-| 首页与最近项目 | 选角 · 演员卡 | 片场 · 成片 |
+| Home & recent projects | Casting · AI actor card | Film set · assembled cut |
 | --- | --- | --- |
-| ![首页](docs/images/home.png) | ![选角](docs/images/cast.png) | ![片场](docs/images/set.png) |
+| ![Home](docs/images/home.png) | ![Casting](docs/images/cast.png) | ![Film set](docs/images/set.png) |
 
-▶ 完整操作录屏见 [demo/openreel-demo.webm](demo/openreel-demo.webm)（演示模式，约 1 分钟）。
+▶ Full walkthrough: [demo/openreel-demo.webm](demo/openreel-demo.webm) (~35s, real footage).
 
-## 它是怎么工作的
+## How it works
 
 ```
-故事梗概 ──► LLM 分镜（8 镜头：画面 / 运镜 / 台词 / 时长，可编辑）
+Logline ──► Storyboard (8 shots: framing / camera move / dialogue / duration, editable)
               │
               ▼
-        选角 · 演员卡（开源版 Soul ID）
-        外貌固定描述 + 统一画风块 + 第一张定妆照作为锚定参考图
+        Casting · AI actor card (open-source "Soul ID")
+        fixed appearance description + unified style block + first head sheet
+        as the anchor reference for every following generation
               │
               ▼
-        每个镜头：演员卡 + 分镜 ──► FLUX 3 关键帧 ──► MiniMax H3 图生视频
+        Per shot: actor card + shot brief ──► keyframe ──► image-to-video (native audio)
               │
               ▼
-        ffmpeg 拼装：统一规格 → concat → 烧录台词字幕 → 混入 BGM ──► 成片 MP4
+        ffmpeg assembly: normalize → concat → burned subtitles → narration & BGM mix ──► final cut
 ```
 
-角色连戏的三层机制（都在开源代码里，无黑盒）：
+Three layers keep the character consistent across shots — all in open code, no black boxes:
 
-1. **文本锚定**：角色外貌描述原文注入每个镜头的关键帧 prompt；
-2. **图像锚定**：第一张定妆照作为 `reference_image` 传给后续所有生成；
-3. **画风锁定**：统一的 styleBlock（画风预设 + 摄影语言）贯穿全片。
+1. **Text anchoring** — the actor's appearance description is injected verbatim into every keyframe prompt;
+2. **Image anchoring** — the first head sheet is used as the reference image / first frame for all following generations;
+3. **Style lock** — a single style block (preset + cinematography language) is applied to the whole film.
 
-## 快速开始
+## Three generation backends
 
-前置要求：Node 22+、ffmpeg（含 ffprobe，加入 PATH）。
+| Backend | Image | Video | Cost |
+| --- | --- | --- | --- |
+| `local` (default) | Z-Image Turbo | MiniMax H3 (local open weights, native audio) | **$0** |
+| `cloud` | `bfl/flux-3-image` | `minimax/minimax-h3` (Comfy Router API) | Comfy credits |
+| `mock` | ffmpeg placeholder | ffmpeg placeholder | $0 |
+
+`OPENREEL_BACKEND=auto|local|cloud|mock` — auto picks local if a ComfyUI server is reachable,
+otherwise cloud if `COMFY_API_KEY` is set, otherwise mock. Narration is synthesized locally with
+**OmniVoice TTS** (voice design: narrator + character voices) and mixed into the cut at per-shot offsets.
+
+The submitted short film (*Rain Night Rooftop*, 8 shots, 41.5s, black-and-white) was generated
+**100% locally on a single RTX 5060 Ti** with open weights — zero API credits.
+
+## Quick start
+
+Prerequisites: Node 22+, ffmpeg (+ ffprobe) on PATH.
 
 ```bash
 npm install
-cp .env.example .env
-npm run dev          # 打开 http://localhost:3000
+cp .env.example .env      # PowerShell: Copy-Item .env.example .env
+npm run dev               # http://localhost:3000
 ```
 
-**零配置即可跑通全流程**（演示模式）：未配置任何 Key 时，分镜用内置模板、画面用 ffmpeg
-占位图/测试视频，用于开发与演示产品闭环。
+**Zero-config demo mode**: with no keys at all, the full product loop runs end-to-end
+(storyboard → casting → shots → assembled cut) using ffmpeg placeholder media — no credits, no accounts.
 
-### 配置真实生成
+### Real generation
 
-在 [.env](.env.example) 中填入：
+Two supported paths:
 
-- `COMFY_API_KEY` — 在 [platform.comfy.org](https://platform.comfy.org) 获取，用于 Comfy Router API；
-- `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL` — 任意 OpenAI 兼容接口（GLM / DeepSeek / OpenAI…），用于分镜。
+**A. Local open weights (recommended — this is the "Open Weights Only" submission path):**
 
-模型 ID 用内置工具查询有效值：
+1. Run a local ComfyUI server (v0.38+) on `127.0.0.1:8188`;
+2. Mount your model directory via `extra_model_paths.yaml` (see [workflows/README.md](workflows/README.md));
+3. Required weights: `z_image_turbo_bf16` + `qwen_3_4b` + `ae` (images), `MiniMax_H3_FL2VA` +
+   `qwen3vl_32b` + H3 video/audio VAEs (video), `OmniVoice` (narration);
+4. Node pack: [ComfyUI-ALLinONE-MinimaxH3](https://github.com/) (the `i2v.json` API workflow ships with it).
+
+**B. Comfy Router API (cloud):**
+
+1. Get an API key at [platform.comfy.org](https://platform.comfy.org) and put it in `.env`;
+2. Set `OPENREEL_IMAGE_MODEL` / `OPENREEL_VIDEO_MODEL` — discover valid IDs with:
 
 ```bash
-npm run models              # 列出全部可用模型（可加关键词：npm run models -- flux）
-npm run models <model_id>   # 查看某模型的入参 schema（遇到 422 时对照排查）
+npm run models              # list all models (filter: npm run models -- flux)
+npm run models <model_id>   # inspect a model's input schema (for 422 debugging)
 ```
 
-默认值 `OPENREEL_IMAGE_MODEL=bfl/flux-3-image`、`OPENREEL_VIDEO_MODEL=minimax/minimax-h3`
-已按官方 schema 核实（图像入参：`prompt`/`aspect_ratio`/`images`；视频入参：`content`/`duration` 4–15 秒/`resolution` 768P|2K/`ratio`）。
+Optional: any OpenAI-compatible LLM key (`LLM_API_KEY`, e.g. GLM/DeepSeek) upgrades the storyboard
+from the built-in template to LLM-generated shot lists.
 
-## 目录结构
+## Repo layout
 
 ```
-src/lib/comfy.ts      Comfy Router API 客户端（提交/轮询/取结果/媒体下载，已按官方 schema 核实）
-src/lib/llm.ts        分镜 LLM（OpenAI 兼容）+ 内置 mock 分镜
-src/lib/media.ts      ffmpeg 管线：归一化 → concat → 字幕 → BGM；mock 媒体生成
-src/lib/store.ts      文件型项目存储（.data/projects/*.json）
-src/app/api/*         REST：storyboard / character / shot / film / project / projects / assets / config
-src/components/Studio.tsx   三步向导 UI（剧本 → 选角 → 片场）
-workflows/            本地 ComfyUI（Open Weights）路线的起点模板
-scripts/list-models.mjs     模型 ID 发现工具
-scripts/smoke.mjs           端到端冒烟测试（支持 16:9 / 9:16）
-scripts/demo-seed.mjs       一键生成完整演示项目（8 镜头 + 字幕 + 成片）
-demo/openreel-demo.webm     操作录屏（演示模式）
-docs/SETUP.md         详细配置与排障手册
+src/lib/comfy_local.ts   Local ComfyUI adapter (Server API: /prompt → /history → /view, /upload/image)
+src/lib/comfy.ts         Comfy Router API client (submit/poll/collect, verified against official schemas)
+src/lib/backend.ts       Backend auto-selection: local → cloud → mock
+src/lib/media.ts         ffmpeg pipeline: normalize → concat → burned subtitles → narration/BGM mix
+src/lib/llm.ts           Storyboard LLM (OpenAI-compatible) + built-in mock storyboard
+src/app/api/*            REST: storyboard / character / shot / film / project / projects / assets / config
+src/components/Studio.tsx  Three-step wizard UI (script → casting → film set)
+workflows/               Runtime workflow templates (Z-Image t2i, MiniMax H3 i2v) + local-route guide
+scripts/list-models.mjs  Router model-ID discovery
+scripts/smoke.mjs        End-to-end smoke test (16:9 and 9:16)
+scripts/demo-seed.mjs    One-command full demo project (8 shots + subtitles + cut)
+demo/                    Walkthrough recording + 5s teaser
+docs/SETUP.md            Detailed setup & troubleshooting (Chinese)
+docs/SUBMISSION.md       Competition submission cheat-sheet (Chinese)
+docs/STATUS.md           Build log (Chinese)
 ```
 
-## Open Weights 路线（本地 ComfyUI）
+## Competition mapping
 
-默认的 Router API 路线依赖云端托管模型（FLUX 3、MiniMax H3）。若想参与竞赛的
-"Open Weights Only" 赛道，参见 [workflows/README.md](workflows/README.md)：
-用本地 ComfyUI + 开源权重（FLUX / Wan）替换 `src/lib/comfy.ts` 的实现即可，产品层无需改动。
-
-## 竞赛映射
-
-| 竞赛奖项 | 本项目的对应点 |
+| Category | How OpenReel qualifies |
 | --- | --- |
-| Best Overall | 完整管线：梗概 → 成片，别人拿去就能用自己的故事拍片 |
-| Built with FLUX 加成 | FLUX 3 为关键帧与定妆照核心（`OPENREEL_IMAGE_MODEL`） |
-| Built with MiniMax H3 加成 | H3 为视频核心（`OPENREEL_VIDEO_MODEL`） |
-| Open Weights Only | `workflows/` 本地路线 + 替换 comfy 客户端 |
-| 演示模式 | 未配置 Key 也能完整演示产品闭环（ffmpeg 占位媒体） |
+| Best Overall | Full pipeline others can use: one logline → a cut of their own story |
+| Open Weights Only | Default stack is 100% local open weights, no closed APIs |
+| Built with MiniMax H3 | H3 (open weights) is the core video model |
+| Most Viral | Casting page is made to be shared: one description → a reusable AI actor |
 
-## 已知限制（MVP）
+## Measured performance (RTX 5060 Ti 16GB + 32GB RAM)
 
-- 每镜头 4–6 秒、全片 8 镜头（约 40–60 秒），一键成片按分镜顺序拼接；
-- 演示模式的占位画面是 ffmpeg 测试图，不是真实生成；
-- Router 各模型的媒体 URL 有 12–24h 签名时效，应用会立即下载到本地 `.data/assets/`；
-- 角色一致性依赖 prompt 锚定 + 参考图，跨 8 个镜头可能出现漂移——重拍单个镜头即可。
+| Step | Time |
+| --- | --- |
+| Z-Image Turbo, 1280×720 keyframe | ~20s |
+| MiniMax H3, 960×544×124f shot (with audio) | ~11 min |
+| Full 8-shot film incl. assembly | ~95 min |
+| ffmpeg assembly (8 shots + subtitles + narration mix) | ~1 min |
+
+## Known limitations (MVP)
+
+- 8 shots × 4–6s per film; "shoot all" runs serially (~11 min per local shot — leave it running);
+- Mock mode uses ffmpeg placeholder media (product-loop demo, not real generation);
+- Cloud media URLs expire in 12–24h — the app downloads assets immediately, so this is transparent;
+- Character drift across 8 shots is possible — re-roll any single shot for free (local route).
 
 ## License
 
