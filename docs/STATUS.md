@@ -1,3 +1,5 @@
+> Note: development log in Chinese (build history & measured numbers). The README is the English overview.
+
 # OpenReel 进度报告
 
 > 更新时间：10/26 · 状态：**🏆 已完成正式提交（Final Submission Form 已提交成功）**

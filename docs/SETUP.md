@@ -1,3 +1,5 @@
+> Note: detailed setup & troubleshooting guide in Chinese. The README covers the English quick start.
+
 # OpenReel 配置与排障手册
 
 ## 1. 前置要求

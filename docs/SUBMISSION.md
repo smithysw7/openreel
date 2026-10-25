@@ -1,3 +1,5 @@
+> Note: submission cheat-sheet in Chinese — the form was submitted on 10/26 with these answers.
+
 # 竞赛提交材料清单（Final Submission Form 逐题答案稿）
 
 > 表单：<https://form.typeform.com/to/V1dSQrkS> · 截止 10/30 9:00 AM PT（北京时间 10/31 00:00）
