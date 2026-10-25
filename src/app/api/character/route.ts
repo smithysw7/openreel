@@ -4,14 +4,13 @@ import {
   assetPath,
   assetUrl,
   getProject,
+  newId,
   readAssetAsDataUrl,
-  saveAssetBuffer,
   saveDataUrl,
   saveProject,
 } from "@/lib/store";
 import { generateMockImage } from "@/lib/media";
 import type { ActorCard } from "@/lib/types";
-import { newId } from "@/lib/store";
 
 
 const SHEET_POSES = [
@@ -79,13 +78,13 @@ export async function POST(req: Request) {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         warnings.push(`设定图 ${i + 1} 生成失败，已用占位图代替：${msg}`);
-        await generateMockImage(assetPath(project.id, `sheet-${i}.png`), i, "16:9");
+        await generateMockImage(assetPath(project.id, `sheet-${i}.png`), i, "16:9", `定妆照 ${i + 1}（占位）`);
         sheetImages.push(assetUrl(project.id, `sheet-${i}.png`));
       }
     }
   } else {
     for (let i = 0; i < SHEET_POSES.length; i++) {
-      await generateMockImage(assetPath(project.id, `sheet-${i}.png`), i, "16:9");
+      await generateMockImage(assetPath(project.id, `sheet-${i}.png`), i, "16:9", `定妆照 ${i + 1}（占位）`);
       sheetImages.push(assetUrl(project.id, `sheet-${i}.png`));
     }
     warnings.push("演示模式：未配置 COMFY_API_KEY，设定图为占位图");

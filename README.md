@@ -9,7 +9,7 @@
 | --- | --- | --- |
 | ![首页](docs/images/home.png) | ![选角](docs/images/cast.png) | ![片场](docs/images/set.png) |
 
-▶ 完整操作录屏见 [demo/openreel-demo.webm](demo/openreel-demo.webm)（演示模式，52 秒）。
+▶ 完整操作录屏见 [demo/openreel-demo.webm](demo/openreel-demo.webm)（演示模式，约 1 分钟）。
 
 ## 它是怎么工作的
 

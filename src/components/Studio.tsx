@@ -117,7 +117,11 @@ export default function Studio() {
       .then(setConfig)
       .catch(() => {});
     void fetchRecents();
-  }, [fetchRecents]);
+    // 深链接：/?p=<项目ID> 直接恢复项目（也便于分享/录制）
+    const pid = new URLSearchParams(window.location.search).get("p");
+    if (pid) void openRecent(pid);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const refreshProject = useCallback(async (id: string) => {
     try {

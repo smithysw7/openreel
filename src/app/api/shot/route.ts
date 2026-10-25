@@ -98,9 +98,15 @@ async function runShotJob(projectId: string, shotId: string): Promise<void> {
       let keyframeDataUrl: string | undefined;
       try {
         const keyframePrompt = `${shot.title}：${shot.description}。角色：${characterBlock}风格：${styleBlock}`;
+        // 锚定参考图优先用用户上传的参考图，否则用演员卡第一张定妆照（保证跨镜头角色一致）
+        const anchorPath =
+          actor?.refImagePath ??
+          (actor?.sheetImages?.[0]
+            ? assetPath(project.id, actor.sheetImages[0].split("/").pop()!)
+            : undefined);
         const { urls } = await generateImage({
           prompt: keyframePrompt,
-          referenceImage: actor?.refImagePath ? await readAssetAsDataUrl(actor.refImagePath) : undefined,
+          referenceImage: anchorPath ? await readAssetAsDataUrl(anchorPath) : undefined,
           aspect: project.aspect,
           timeoutMs: 8 * 60_000,
         });
@@ -138,13 +144,14 @@ async function runShotJob(projectId: string, shotId: string): Promise<void> {
       });
     } else {
       // 演示模式：占位媒体，模拟生成耗时
+      const shotLabel = `镜头 ${shot.index + 1} · ${shot.title}（占位画面）`;
       await sleep(1200);
-      await generateMockImage(assetPath(project.id, `${shot.id}-keyframe.png`), shot.index, project.aspect);
+      await generateMockImage(assetPath(project.id, `${shot.id}-keyframe.png`), shot.index, project.aspect, shotLabel);
       await updateShot(projectId, shotId, (_p, s) => {
         s.keyframePath = assetUrl(project.id, `${shot.id}-keyframe.png`);
       });
       await sleep(1000);
-      await generateMockVideo(assetPath(project.id, `${shot.id}-video.mp4`), shot.durationSec, project.aspect);
+      await generateMockVideo(assetPath(project.id, `${shot.id}-video.mp4`), shot.durationSec, project.aspect, shotLabel);
       const actual = await probeDuration(assetPath(project.id, `${shot.id}-video.mp4`));
       await updateShot(projectId, shotId, (p, s) => {
         s.videoPath = assetUrl(project.id, `${shot.id}-video.mp4`);

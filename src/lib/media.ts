@@ -49,25 +49,79 @@ async function ensureParentDir(dest: string): Promise<void> {
   await fs.mkdir(path.dirname(dest), { recursive: true });
 }
 
+/** 中文字体探测（演示模式标签用），找不到字体则不带标签 */
+const FONT_CANDIDATES = [
+  "C:/Windows/Fonts/msyh.ttc",
+  "C:/Windows/Fonts/msyh.ttf",
+  "C:/Windows/Fonts/simhei.ttf",
+  "C:/Windows/Fonts/arial.ttf",
+];
+let cachedFont: string | null | undefined;
+
+async function getFontFile(): Promise<string | null> {
+  if (cachedFont !== undefined) return cachedFont;
+  cachedFont = null;
+  for (const f of FONT_CANDIDATES) {
+    try {
+      await fs.access(f);
+      cachedFont = f;
+      break;
+    } catch {
+      /* 试下一个 */
+    }
+  }
+  return cachedFont;
+}
+
+function escapeDrawtext(text: string): string {
+  return text.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/%/g, "\\%").replace(/:/g, "\\:");
+}
+
+/** 底部居中标签滤镜；无可用字体时返回 null（画面不带文字） */
+async function labelFilter(text: string, fontSize: number): Promise<string | null> {
+  if (!text.trim()) return null;
+  const font = await getFontFile();
+  if (!font) return null;
+  // ffmpeg 滤镜是两层解析：Windows 路径里的冒号即使在引号内也要转义为 \:
+  const fontPath = font.replace(/\\/g, "/").replace(/:/g, "\\:");
+  return `drawtext=text='${escapeDrawtext(text)}':fontfile='${fontPath}'` +
+    `:fontcolor=white:fontsize=${fontSize}:x=(w-tw)/2:y=h-${Math.round(fontSize * 2.4)}` +
+    `:box=1:boxcolor=black@0.45:boxborderw=14`;
+}
+
 /** mock 占位图：渐变色块（演示模式下保证全流程可跑通） */
-export async function generateMockImage(dest: string, seed: number, aspect: "16:9" | "9:16"): Promise<void> {
+export async function generateMockImage(
+  dest: string,
+  seed: number,
+  aspect: "16:9" | "9:16",
+  label?: string,
+): Promise<void> {
   await ensureParentDir(dest);
   const { w, h } = dims(aspect);
   const [c0, c1] = MOCK_PALETTES[seed % MOCK_PALETTES.length];
+  const vf = await labelFilter(label ?? "", Math.round(h / 18));
   await run("ffmpeg", [
     "-y", "-f", "lavfi", "-i",
     `gradients=s=${w}x${h}:c0=${c0}:c1=${c1}:x0=0:y0=0:x1=${w}:y1=${h}:nb_colors=2`,
+    ...(vf ? ["-vf", vf] : []),
     "-frames:v", "1", dest,
   ]);
 }
 
 /** mock 占位视频：testsrc2 动态测试图 */
-export async function generateMockVideo(dest: string, durationSec: number, aspect: "16:9" | "9:16"): Promise<void> {
+export async function generateMockVideo(
+  dest: string,
+  durationSec: number,
+  aspect: "16:9" | "9:16",
+  label?: string,
+): Promise<void> {
   await ensureParentDir(dest);
   const { w, h } = dims(aspect);
   const d = Math.min(10, Math.max(3, Math.round(durationSec)));
+  const vf = await labelFilter(label ?? "", Math.round(h / 18));
   await run("ffmpeg", [
     "-y", "-f", "lavfi", "-i", `testsrc2=duration=${d}:size=${w}x${h}:rate=24`,
+    ...(vf ? ["-vf", vf] : []),
     "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", dest,
   ]);
 }
